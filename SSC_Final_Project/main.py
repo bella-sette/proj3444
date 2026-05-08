@@ -87,6 +87,17 @@ class MainApp(QMainWindow):
             self.assignments = optimizer.optimize(
                 self.staff, self.projects, self.hours, self.rates
             )
+            try:
+                optimizer.validate(self.assignments, self.staff, self.projects, self.hours)
+                print("✓ Optimization output passed validation")
+
+            except AssertionError as e:
+                print(f"⚠ Validation failed: {e}")
+                QMessageBox.warning(
+                    self, "Validation Warning",
+                    f"Optimizer output may be invalid:\n{e}"
+            )
+            
         except Exception as e:
             QMessageBox.critical(
                 self,
