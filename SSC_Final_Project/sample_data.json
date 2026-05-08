@@ -1,0 +1,40 @@
+{
+  "staff": [
+    {"id": 1,  "name": "Patricia Chen",   "classification": "Partner",   "base_rate": 250},
+    {"id": 2,  "name": "David Park",       "classification": "Partner",   "base_rate": 245},
+    {"id": 3,  "name": "Michael Johnson",  "classification": "Director",  "base_rate": 175},
+    {"id": 4,  "name": "Rachel Kim",       "classification": "Director",  "base_rate": 180},
+    {"id": 5,  "name": "Sarah Beyene",     "classification": "Manager",   "base_rate": 95},
+    {"id": 6,  "name": "Tom Williams",     "classification": "Manager",   "base_rate": 100},
+    {"id": 7,  "name": "Linda Garcia",     "classification": "Manager",   "base_rate": 92},
+    {"id": 8,  "name": "George Davis",     "classification": "Senior",    "base_rate": 75},
+    {"id": 9,  "name": "Emily Rodriguez",  "classification": "Senior",    "base_rate": 78},
+    {"id": 10, "name": "Marcus Lee",       "classification": "Senior",    "base_rate": 72},
+    {"id": 11, "name": "Sam Beyene",       "classification": "Associate", "base_rate": 55},
+    {"id": 12, "name": "Alex Nguyen",      "classification": "Associate", "base_rate": 52},
+    {"id": 13, "name": "Jamie O'Brien",    "classification": "Associate", "base_rate": 58},
+    {"id": 14, "name": "Priya Patel",      "classification": "Associate", "base_rate": 54},
+    {"id": 15, "name": "Connor Murphy",    "classification": "Associate", "base_rate": 56}
+  ],
+  "projects": [
+    {"id": 101, "name": "Project Alpha",   "industry": "Healthcare",       "revenue": 250000},
+    {"id": 102, "name": "Project Beta",    "industry": "Finance",          "revenue": 180000},
+    {"id": 103, "name": "Project Gamma",   "industry": "Technology",       "revenue": 320000},
+    {"id": 104, "name": "Project Delta",   "industry": "Retail",           "revenue": 150000},
+    {"id": 105, "name": "Project Epsilon", "industry": "Manufacturing",    "revenue": 220000}
+  ],
+  "hours": {
+    "101": {"Partner": 4, "Director": 8,  "Manager": 12, "Senior": 16, "Associate": 24},
+    "102": {"Partner": 3, "Director": 6,  "Manager": 10, "Senior": 14, "Associate": 20},
+    "103": {"Partner": 5, "Director": 10, "Manager": 14, "Senior": 18, "Associate": 28},
+    "104": {"Partner": 2, "Director": 5,  "Manager": 8,  "Senior": 12, "Associate": 16},
+    "105": {"Partner": 4, "Director": 8,  "Manager": 12, "Senior": 16, "Associate": 22}
+  },
+  "rates": {
+    "Partner":   250,
+    "Director":  175,
+    "Manager":   95,
+    "Senior":    75,
+    "Associate": 55
+  }
+}
