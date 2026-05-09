@@ -57,15 +57,20 @@ def get_staff_classifications():
 
 def get_rates():
     """Returns {classification: avg_rate} as expected by the optimizer."""
-    data = _try_api("/project/StaffRates")
-    if data is None:
+    rates_data = _try_api("/project/StaffRates")
+    staff_data = _try_api("/project/Staff")
+    if rates_data is None:
         return _load_sample()["rates"]
-    # Average billing rate per classification across all staff+project combos
+
+    # StaffRates has staffClassification: None, so build the map from Staff endpoint
+    staff_cls = {
+        s["staffID"]: s["staffClassification"]["classification"]
+        for s in staff_data
+    }
+
     totals = defaultdict(list)
-    for entry in data:
-        cls = entry["staff"]["staffClassification"]["classification"] \
-              if entry["staff"].get("staffClassification") \
-              else None
+    for entry in rates_data:
+        cls = staff_cls.get(entry["staffID"])
         if cls:
             totals[cls].append(entry["rate"])
     return {cls: sum(vals) / len(vals) for cls, vals in totals.items()}
