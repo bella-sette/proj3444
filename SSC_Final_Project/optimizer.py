@@ -116,3 +116,6 @@ def validate(assignments, staff, projects, hours):
                       if a["project_id"] == p["id"] and a["classification"] == c)
             assert got == need, f"Project {p['id']} {c}: need {need}, got {got}"
     return True
+
+
+
