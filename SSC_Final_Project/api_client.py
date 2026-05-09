@@ -1,17 +1,18 @@
 """
-API client — pulls staff, project, hours, and rates data.
+API client — pulls project hours and projects data.
 
 Owner: Connor
 Job: Return clean Python dicts in the formats specified in CONTRACTS.md.
 If the live API is unavailable, fall back to sample_data.json.
+
+Note: Assignments are NOT fetched from the API — they are generated
+      dynamically by the optimization model. Per request, we are not using the /Assignments endpoint
 """
 import json
-import os
+import requests
 from pathlib import Path
 
-# import requests   # uncomment when wiring up the real API
-
-API_BASE = "https://api.example.com"  # TODO: replace with real endpoint
+API_BASE = "https://bit-coursework-api.azurewebsites.net"
 SAMPLE_PATH = Path(__file__).parent / "sample_data.json"
 
 
@@ -21,48 +22,31 @@ def _load_sample():
 
 
 def _try_api(endpoint):
-    """
-    Attempt the live API call. Return parsed JSON on success, or None
-    on any failure so callers can fall back to sample data.
-    """
-    # Example with requests:
-    # try:
-    #     r = requests.get(f"{API_BASE}/{endpoint}", timeout=5)
-    #     r.raise_for_status()
-    #     return r.json()
-    # except Exception:
-    #     return None
-    return None
+    try:
+        response = requests.get(f"{API_BASE}{endpoint}", timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        return None
 
 
-def get_staff():
-    """List of staff dicts. See CONTRACTS.md §3."""
-    data = _try_api("staff")
-    if data is None:
-        data = _load_sample()["staff"]
-    return data
+# --- Project Hours ---
 
+def get_project_hours():
+    return _try_api("/project/ProjectHours") or _load_sample()["hours"]
+
+def get_project_hours_filtered(project_id, classification_id):
+    return _try_api(f"/project/ProjectHours/{project_id}/{classification_id}") or _load_sample()["hours"]
+
+def get_project_hours_by_week(project_id, classification_id, week_num):
+    return _try_api(f"/project/ProjectHours/{project_id}/{classification_id}/{week_num}") or _load_sample()["hours"]
+
+
+# --- Projects ---
 
 def get_projects():
-    """List of project dicts. See CONTRACTS.md §3."""
-    data = _try_api("projects")
-    if data is None:
-        data = _load_sample()["projects"]
-    return data
+    return _try_api("/project/Projects") or _load_sample()["projects"]
 
+def get_project(project_id):
+    return _try_api(f"/project/Projects/{project_id}") or _load_sample()["projects"]
 
-def get_hours():
-    """{project_id: {classification: hours}}. See CONTRACTS.md §3."""
-    data = _try_api("hours")
-    if data is None:
-        data = _load_sample()["hours"]
-    # JSON keys are strings — convert project IDs back to ints
-    return {int(pid): h for pid, h in data.items()}
-
-
-def get_rates():
-    """{classification: rate}. See CONTRACTS.md §3."""
-    data = _try_api("rates")
-    if data is None:
-        data = _load_sample()["rates"]
-    return data
