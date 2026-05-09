@@ -1,7 +1,7 @@
 """
 API client — pulls project hours and projects data.
 
-Owner: Connor
+Owner: George
 Job: Return clean Python dicts in the formats specified in CONTRACTS.md.
 If the live API is unavailable, fall back to sample_data.json.
 
@@ -49,4 +49,3 @@ def get_projects():
 
 def get_project(project_id):
     return _try_api(f"/project/Projects/{project_id}") or _load_sample()["projects"]
-
