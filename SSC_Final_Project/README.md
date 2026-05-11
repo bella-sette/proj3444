@@ -1,52 +1,73 @@
 # SSC Staffing Optimization Tool
 
-A Python desktop app that automates staffing assignments for SSC, replacing
-Sarah's manual Excel process. Pulls staff and project data, runs an
-optimizer to assign consultants to projects under cost and hours
-constraints, and displays results in a PyQt UI with charts.
+This is our final project for BIT 3444. It's a desktop app that helps SSC figure out
+which consultants should be assigned to which projects — automatically, instead of
+Sarah doing it by hand in Excel. It pulls real data from an API, runs an optimizer
+to find the best assignments, and shows everything in a clean PyQt5 UI with charts.
 
 ## Team
 
-- **Bella** — Lead programmer (`main.py`, UI integration)
-- **George** — Math lead (`optimizer.py`)
-- **Connor** — API / data (`api_client.py`)
-- **Sam** — Project manager (`charts.py`, README, demo)
+- **Bella** 
+- **George**
+- **Connor** 
+- **Sam** 
 
-## How to run
+## What you need to install
 
-1. Install Python 3.9+
-2. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-3. From the project folder:
-   ```
-   python main.py
-   ```
+Run this one command and you're good:
+
+    pip install -r requirements.txt
+
+Here's what gets installed and why:
+
+| Package | Version | What it's for |
+|---------|---------|---------------|
+| `PyQt5` | >=5.15 | The desktop UI |
+| `matplotlib` | >=3.5 | The charts |
+| `PuLP` | >=2.7 | The optimizer that figures out assignments |
+| `requests` | >=2.28 | Fetching data from the API |
+
+## How to run it
+
+1. Make sure you have Python 3.9 or newer
+2. Install the dependencies (see above)
+3. Run this from the project folder:
+
+        python main.py
+
+The app will try to pull live data from the SSC API when it starts. If that
+fails for any reason, it automatically uses sample_data.json as a backup
+so the app still works.
+
+## How it works
+
+When you hit Run Optimization, the app fetches staff and project data from
+the API and hands it to the optimizer. The optimizer finds the cheapest valid
+way to assign consultants to projects, making sure:
+
+- Nobody works more than 40 hours a week
+- Every project has a Partner, Director, Manager, Senior, and Associate
+- Each project gets exactly the hours it needs per classification
+
+Results show up right in the UI — no extra steps needed.
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `main.py` | Loads UI, connects buttons, displays results |
-| `api_client.py` | Fetches staff, project, rate, and hours data |
-| `optimizer.py` | Assigns staff to projects under constraints |
-| `charts.py` | Builds matplotlib charts for the UI |
-| `ssc_staffing_tool.ui` | Qt Designer interface file |
-| `sample_data.json` | Backup data if API is unavailable |
-| `CONTRACTS.md` | Agreed widget names, field names, formulas |
+| File | What it does |
+|------|--------------|
+| `main.py` | Runs the app and connects the UI to everything else |
+| `api_client.py` | Gets staff, project, rate, and hours data from the API |
+| `optimizer.py` | Figures out the best staff assignments |
+| `charts.py` | Builds the charts shown in the employee and project views |
+| `ssc_staffing_tool.ui` | The Qt Designer interface file |
+| `sample_data.json` | Backup data in case the API is down |
+| `requirements.txt` | Lists the libraries you need to install |
 
 ## How to use the app
 
-1. Click **Run Optimization** to compute assignments.
-2. Pick an employee from the **Employee** dropdown to see their
-   classification, rate, assigned projects, and hours.
-3. Pick a project from the **Project** dropdown to see assigned staff,
-   cost, profit, and hours by classification.
-
-## Constraints
-
-- Each consultant works no more than 40 hours per week.
-- Every project must have one of each: Partner, Director, Manager,
-  Senior, Associate.
-- The optimizer minimizes total staffing cost.
+1. Click Run Optimization to generate staff assignments.
+2. Use the Employee dropdown to look up a specific consultant — you'll see
+   their classification, base rate, assigned projects, and a pie chart showing
+   billable vs. non-billable hours.
+3. Use the Project dropdown to see who's assigned to a project, along with
+   total cost, profit, and a bar chart breaking down hours by classification.
