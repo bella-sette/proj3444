@@ -1,34 +1,43 @@
 """
-API client — pulls staff, project hours, projects, and rates data.
+API client — pulls staff, project, hours, and rates data.
 
-Owner: George
-Job: Return clean Python dicts in the formats specified in CONTRACTS.md.
-If the live API is unavailable, fall back to sample_data.json.
-
-Note: Assignments are NOT fetched from the API — they are generated
-      dynamically by the optimization model.
+Returns clean Python dicts in the formats expected by main.py and the optimizer.
+If the live API is unavailable, falls back to sample_data.json.
+Caches responses so we don't hit the network more than once per endpoint.
 """
 import json
-import requests
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
+
+import requests
 
 API_BASE = "https://bit-coursework-api.azurewebsites.net"
 SAMPLE_PATH = Path(__file__).parent / "sample_data.json"
 
+# Cache so we only hit the API (or load the sample file) once per session
+_api_cache = {}
+_sample_cache = None
+
 
 def _load_sample():
-    with open(SAMPLE_PATH) as f:
-        return json.load(f)
+    """Load sample_data.json once and reuse it."""
+    global _sample_cache
+    if _sample_cache is None:
+        with open(SAMPLE_PATH) as f:
+            _sample_cache = json.load(f)
+    return _sample_cache
 
 
 def _try_api(endpoint):
-    try:
-        response = requests.get(f"{API_BASE}{endpoint}", timeout=5)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException:
-        return None
+    """Hit the API once per endpoint, then cache the result (success or None)."""
+    if endpoint not in _api_cache:
+        try:
+            response = requests.get(f"{API_BASE}{endpoint}", timeout=5)
+            response.raise_for_status()
+            _api_cache[endpoint] = response.json()
+        except requests.RequestException:
+            _api_cache[endpoint] = None
+    return _api_cache[endpoint]
 
 
 # --- Staff ---
@@ -48,6 +57,7 @@ def get_staff():
         for s in data
     ]
 
+
 def get_staff_classifications():
     data = _try_api("/project/StaffClassification")
     return data if data is not None else _load_sample().get("classifications", [])
@@ -56,24 +66,28 @@ def get_staff_classifications():
 # --- Rates ---
 
 def get_rates():
-    """Returns {classification: avg_rate} as expected by the optimizer."""
+    """Returns {classification: avg_rate}. Averages all rates per classification."""
     rates_data = _try_api("/project/StaffRates")
     staff_data = _try_api("/project/Staff")
-    if rates_data is None:
+
+    # Need both endpoints to compute rates; fall back if either is missing
+    if rates_data is None or staff_data is None:
         return _load_sample()["rates"]
 
-    # StaffRates has staffClassification: None, so build the map from Staff endpoint
+    # Build staff_id -> classification map from the Staff endpoint
     staff_cls = {
         s["staffID"]: s["staffClassification"]["classification"]
         for s in staff_data
     }
 
-    totals = defaultdict(list)
+    # Group rates by classification and average them
+    by_class = defaultdict(list)
     for entry in rates_data:
         cls = staff_cls.get(entry["staffID"])
         if cls:
-            totals[cls].append(entry["rate"])
-    return {cls: sum(vals) / len(vals) for cls, vals in totals.items()}
+            by_class[cls].append(entry["rate"])
+    return {cls: sum(vals) / len(vals) for cls, vals in by_class.items()}
+
 
 def get_rates_for_staff(staff_id, project_id):
     return _try_api(f"/project/StaffRates/{staff_id}/{project_id}")
@@ -82,11 +96,14 @@ def get_rates_for_staff(staff_id, project_id):
 # --- Project Hours ---
 
 def get_hours():
-    """Returns {project_id: {classification: total_hours}} as expected by the optimizer."""
+    """Returns {project_id: {classification: total_hours}}. Sums hours across all weeks."""
     data = _try_api("/project/ProjectHours")
     if data is None:
-        return _load_sample()["hours"]
-    # Sum hours across all weeks per project + classification
+        # JSON keys are strings, but the optimizer expects integer project IDs
+        sample = _load_sample()["hours"]
+        return {int(pid): h for pid, h in sample.items()}
+
+    # Sum hours per (project, classification) across all weekly entries
     hours = defaultdict(lambda: defaultdict(int))
     for entry in data:
         pid = entry["project"]["id"]
@@ -94,8 +111,10 @@ def get_hours():
         hours[pid][cls] += entry["numberHours"]
     return {pid: dict(cls_hours) for pid, cls_hours in hours.items()}
 
+
 def get_project_hours_filtered(project_id, classification_id):
     return _try_api(f"/project/ProjectHours/{project_id}/{classification_id}")
+
 
 def get_project_hours_by_week(project_id, classification_id, week_num):
     return _try_api(f"/project/ProjectHours/{project_id}/{classification_id}/{week_num}")
@@ -118,7 +137,9 @@ def get_projects():
         for p in data
     ]
 
+
 def get_project(project_id):
+    """Get a single project by ID."""
     data = _try_api(f"/project/Projects/{project_id}")
     if data is None:
         return None
