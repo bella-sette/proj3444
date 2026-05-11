@@ -87,10 +87,11 @@ class MainApp(QMainWindow):
             return
 
         try:
-            self.assignments = optimizer.optimize_all_weeks(
-                self.staff, self.projects, self.hours_by_week, self.rates,
-                staff_project_rates=self.staff_project_rates,
-            )
+            self.assignments, self.idle_cost = optimizer.optimize_all_weeks(
+        self.staff, self.projects, self.hours_by_week, self.rates,
+        staff_project_rates=self.staff_project_rates,
+        )
+            
             try:
                 optimizer.validate(self.assignments, self.staff, self.projects, self.hours, num_weeks=self.num_weeks)
                 print("✓ Optimization output passed validation")
@@ -110,8 +111,9 @@ class MainApp(QMainWindow):
             )
             return
 
-        total_cost = sum(a["cost"] for a in self.assignments)
-        self.lblTotalCostValue.setText(f"${total_cost:,}")
+        work_cost = sum(a["cost"] for a in self.assignments)
+        total_cost = work_cost + self.idle_cost
+        self.lblTotalCostValue.setText(f"${total_cost:,.0f}")
 
         QMessageBox.information(self, "Done", "Optimization complete.")
         self.show_employee()

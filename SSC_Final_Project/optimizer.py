@@ -56,7 +56,13 @@ def optimize(staff, projects, hours, rates, staff_project_rates=None, num_weeks=
                 )
 
     # Objective: minimize total billed cost
-    prob += lpSum(x[k] * rate_for(k[0], k[1], k[2]) for k in x)
+    staff_base = {s["id"]: s["base_rate"] for s in staff}
+    # Objective: minimize working cost MINUS recovered idle cost.
+    # Every working hour saves (2 × base_rate) of idle cost we'd otherwise pay.
+    prob += lpSum(
+        x[k] * (rate_for(k[0], k[1], k[2]) - 2 * staff_base[k[0]])
+        for k in x
+    )
 
     # Constraint 1: each project's classification hours must be exactly met
     for p in projects:
@@ -127,25 +133,32 @@ def validate(assignments, staff, projects, hours, num_weeks=1):
 
 def optimize_all_weeks(staff, projects, hours_by_week, rates, staff_project_rates=None):
     """
-    Run optimize() once per week and combine the results.
-    Each week independently enforces the 40-hour cap per staff member,
-    which forces realistic per-week spreading of work.
+    Run optimize() per week and sum results.
+    Returns (assignments, idle_cost) where idle_cost is the total
+    cost of unused staff capacity (40 - hours_worked) × 2 × base_rate.
     """
-    combined = {}  # (staff_id, project_id, classification) -> aggregated assignment
+    combined = {}
+    total_idle_cost = 0
 
     for week_num, week_hours in hours_by_week.items():
-        if not any(week_hours.values()):
-            continue  # skip empty weeks
         try:
             week_assignments = optimize(
                 staff, projects, week_hours, rates,
                 staff_project_rates=staff_project_rates,
-                num_weeks=1,  # 40-hour cap per week
+                num_weeks=1,
             )
         except RuntimeError:
-            continue  # skip infeasible weeks (shouldn't happen with valid data)
+            week_assignments = []
 
-        # Aggregate so each (staff, project, classification) shows total hours
+        # Compute idle cost for this week (across ALL staff, working or not)
+        worked = {}
+        for a in week_assignments:
+            worked[a["staff_id"]] = worked.get(a["staff_id"], 0) + a["hours"]
+        for s in staff:
+            idle_hours = MAX_HOURS_PER_WEEK - worked.get(s["id"], 0)
+            total_idle_cost += idle_hours * 2 * s["base_rate"]
+
+        # Aggregate working assignments
         for a in week_assignments:
             key = (a["staff_id"], a["project_id"], a["classification"])
             if key not in combined:
@@ -159,4 +172,4 @@ def optimize_all_weeks(staff, projects, hours_by_week, rates, staff_project_rate
             combined[key]["hours"] += a["hours"]
             combined[key]["cost"] += a["cost"]
 
-    return list(combined.values())
+    return list(combined.values()), total_idle_cost
