@@ -96,20 +96,28 @@ def get_rates_for_staff(staff_id, project_id):
 # --- Project Hours ---
 
 def get_hours():
-    """Returns {project_id: {classification: total_hours}}. Sums hours across all weeks."""
+    """Returns {project_id: {classification: avg_hours_per_week}}.
+    
+    The API gives per-week entries; the optimizer thinks per-week
+    (40-hour cap is weekly), so we average across the weeks of data.
+    """
     data = _try_api("/project/ProjectHours")
     if data is None:
-        # JSON keys are strings, but the optimizer expects integer project IDs
         sample = _load_sample()["hours"]
         return {int(pid): h for pid, h in sample.items()}
 
-    # Sum hours per (project, classification) across all weekly entries
-    hours = defaultdict(lambda: defaultdict(int))
+    # Group every weekly entry by (project, classification)
+    grouped = defaultdict(lambda: defaultdict(list))
     for entry in data:
         pid = entry["project"]["id"]
         cls = entry["classification"]["classification"]
-        hours[pid][cls] += entry["numberHours"]
-    return {pid: dict(cls_hours) for pid, cls_hours in hours.items()}
+        grouped[pid][cls].append(entry["numberHours"])
+
+    # Average across weeks and round to whole hours
+    return {
+        pid: {cls: round(sum(vals) / len(vals)) for cls, vals in cls_hours.items()}
+        for pid, cls_hours in grouped.items()
+    }
 
 
 def get_project_hours_filtered(project_id, classification_id):
