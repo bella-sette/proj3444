@@ -21,34 +21,27 @@ REQUIRED_CLASSIFICATIONS = ["Partner", "Director", "Manager", "Senior", "Associa
 MAX_HOURS_PER_WEEK = 40
 
 
-def optimize(staff, projects, hours, rates):
+def optimize(staff, projects, hours, rates, staff_project_rates=None, num_weeks=1):
     """
-    Assigns staff to projects at minimum total cost.
-
-    Inputs:
-        staff: list of dicts with id, name, classification, base_rate
-        projects: list of dicts with id, name, industry, revenue
-        hours: dict {project_id: {classification: hours_needed}}
-        rates: dict {classification: rate}  -- not actually used here, we
-               use each individual's base_rate instead so the model can
-               prefer cheaper people within the same classification
-
-    Returns:
-        list of assignment dicts {project_id, staff_id, classification, hours, cost}
+    Assigns staff to projects at minimum total billed cost.
+    
+    If staff_project_rates is provided, uses per-(staff,project) billing rates.
+    Otherwise falls back to each staff member's base_rate.
     """
-    # Build a quick lookup so we can find each person's hourly rate by their id.
-    # Using base_rate per-person (instead of a flat classification rate) is
-    # what makes the optimizer actually pick the cheapest available person.
-    staff_rates = {s["id"]: s["base_rate"] for s in staff}
+    max_hours = MAX_HOURS_PER_WEEK * num_weeks  # cap scales with engagement length
 
-    # Create the LP problem -- we want to MINIMIZE total cost
+    # Pick which rate to use for each (staff, project) pair
+    if staff_project_rates:
+        def rate_for(sid, pid, cls):
+            return staff_project_rates.get((sid, pid), rates.get(cls, 0))
+    else:
+        staff_base = {s["id"]: s["base_rate"] for s in staff}
+        def rate_for(sid, pid, cls):
+            return staff_base.get(sid, rates.get(cls, 0))
+
     prob = LpProblem("ssc_staffing", LpMinimize)
 
-    # Decision variables:
-    # x[(staff_id, project_id, classification)] = hours this person works
-    # on this project in this role.
-    # Only create a variable if the staff member's classification matches
-    # what the project needs (a Manager can't fill a Partner slot).
+    # Decision variables: x[(staff_id, project_id, classification)] = hours
     x = {}
     for s in staff:
         for p in projects:
@@ -59,14 +52,13 @@ def optimize(staff, projects, hours, rates):
                     f"x_{s['id']}_{p['id']}_{cls}",
                     lowBound=0,
                     upBound=need,
-                    cat=LpInteger,  # whole hours only
+                    cat=LpInteger,
                 )
 
-    # Objective function:
-    # total cost = sum across all assignments of (hours * that person's rate)
-    prob += lpSum(x[k] * staff_rates[k[0]] for k in x)
+    # Objective: minimize total billed cost
+    prob += lpSum(x[k] * rate_for(k[0], k[1], k[2]) for k in x)
 
-    # Constraint 1: each project's hours per classification must be EXACTLY met
+    # Constraint 1: each project's classification hours must be exactly met
     for p in projects:
         for cls in REQUIRED_CLASSIFICATIONS:
             need = hours.get(p["id"], {}).get(cls, 0)
@@ -81,23 +73,21 @@ def optimize(staff, projects, hours, rates):
                     f"need_{p['id']}_{cls}",
                 )
 
-    # Constraint 2: no staff member can work more than 40 hours per week
-    # (totaled across all projects they're assigned to)
+    # Constraint 2: no staff over (40 * weeks) total hours across all projects
     for s in staff:
         prob += (
-            lpSum(x[k] for k in x if k[0] == s["id"]) <= MAX_HOURS_PER_WEEK,
+            lpSum(x[k] for k in x if k[0] == s["id"]) <= max_hours,
             f"cap_{s['id']}",
         )
 
-    # Solve using PuLP's built-in CBC solver
     status = prob.solve(PULP_CBC_CMD(msg=False))
     if LpStatus[status] != "Optimal":
         raise RuntimeError(
             f"Could not find a valid staffing assignment ({LpStatus[status]}). "
-            f"There might not be enough staff in each classification to cover all projects."
+            f"There might not be enough staff in each classification."
         )
 
-    # Build the result list (only assignments with hours > 0)
+    # Build result list
     assignments = []
     for (sid, pid, cls), var in x.items():
         h = int(var.value() or 0)
@@ -107,28 +97,22 @@ def optimize(staff, projects, hours, rates):
                 "staff_id": sid,
                 "classification": cls,
                 "hours": h,
-                "cost": h * staff_rates[sid],
+                "cost": h * rate_for(sid, pid, cls),
             })
     return assignments
 
 
-def validate(assignments, staff, projects, hours):
-    """
-    Sanity-checks the optimizer's output before we display it:
-      - No staff member is over 40 hours
-      - Every project's classification hours are exactly covered
+def validate(assignments, staff, projects, hours, num_weeks=1):
+    """Sanity-check optimizer output."""
+    max_hours = MAX_HOURS_PER_WEEK * num_weeks
 
-    Raises AssertionError if something is wrong, returns True if all good.
-    """
-    # Check 1: no one over 40 hours
     hours_per_staff = {}
     for a in assignments:
         hours_per_staff[a["staff_id"]] = hours_per_staff.get(a["staff_id"], 0) + a["hours"]
 
-    over_limit = [sid for sid, h in hours_per_staff.items() if h > MAX_HOURS_PER_WEEK]
-    assert not over_limit, f"Staff over 40 hours: {over_limit}"
+    over_limit = [sid for sid, h in hours_per_staff.items() if h > max_hours]
+    assert not over_limit, f"Staff over {max_hours} hours: {over_limit}"
 
-    # Check 2: every project's classification needs are exactly met
     for p in projects:
         for cls in REQUIRED_CLASSIFICATIONS:
             needed = hours.get(p["id"], {}).get(cls, 0)
@@ -139,5 +123,40 @@ def validate(assignments, staff, projects, hours):
             assert assigned == needed, (
                 f"Project {p['id']} needs {needed} {cls} hours but got {assigned}"
             )
-
     return True
+
+def optimize_all_weeks(staff, projects, hours_by_week, rates, staff_project_rates=None):
+    """
+    Run optimize() once per week and combine the results.
+    Each week independently enforces the 40-hour cap per staff member,
+    which forces realistic per-week spreading of work.
+    """
+    combined = {}  # (staff_id, project_id, classification) -> aggregated assignment
+
+    for week_num, week_hours in hours_by_week.items():
+        if not any(week_hours.values()):
+            continue  # skip empty weeks
+        try:
+            week_assignments = optimize(
+                staff, projects, week_hours, rates,
+                staff_project_rates=staff_project_rates,
+                num_weeks=1,  # 40-hour cap per week
+            )
+        except RuntimeError:
+            continue  # skip infeasible weeks (shouldn't happen with valid data)
+
+        # Aggregate so each (staff, project, classification) shows total hours
+        for a in week_assignments:
+            key = (a["staff_id"], a["project_id"], a["classification"])
+            if key not in combined:
+                combined[key] = {
+                    "staff_id": a["staff_id"],
+                    "project_id": a["project_id"],
+                    "classification": a["classification"],
+                    "hours": 0,
+                    "cost": 0,
+                }
+            combined[key]["hours"] += a["hours"]
+            combined[key]["cost"] += a["cost"]
+
+    return list(combined.values())

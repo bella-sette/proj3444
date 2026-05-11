@@ -1,6 +1,6 @@
 """
 Chart generation. Dark theme, grayscale palette.
-Owner: Sam
+
 """
 import matplotlib
 matplotlib.use("QtAgg")

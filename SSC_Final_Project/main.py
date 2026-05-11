@@ -1,8 +1,8 @@
 """
 SSC Staffing Optimization Tool — main entry point.
 
-Owner: Bella
-Job: Load the UI, populate dropdowns, wire up the Run button, update
+
+Load the UI, populate dropdowns, wire up the Run button, update
 labels and charts when the user interacts.
 """
 import sys
@@ -63,6 +63,9 @@ class MainApp(QMainWindow):
             self.projects = api_client.get_projects()
             self.hours = api_client.get_hours()
             self.rates = api_client.get_rates()
+            self.staff_project_rates = api_client.get_staff_project_rates()
+            self.num_weeks = api_client.get_num_weeks()
+            self.hours_by_week = api_client.get_hours_by_week()
         except Exception as e:
             QMessageBox.warning(
                 self, "Data Error", f"API data could not be loaded.\n{e}"
@@ -84,11 +87,12 @@ class MainApp(QMainWindow):
             return
 
         try:
-            self.assignments = optimizer.optimize(
-                self.staff, self.projects, self.hours, self.rates
+            self.assignments = optimizer.optimize_all_weeks(
+                self.staff, self.projects, self.hours_by_week, self.rates,
+                staff_project_rates=self.staff_project_rates,
             )
             try:
-                optimizer.validate(self.assignments, self.staff, self.projects, self.hours)
+                optimizer.validate(self.assignments, self.staff, self.projects, self.hours, num_weeks=self.num_weeks)
                 print("✓ Optimization output passed validation")
 
             except AssertionError as e:

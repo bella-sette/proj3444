@@ -96,28 +96,31 @@ def get_rates_for_staff(staff_id, project_id):
 # --- Project Hours ---
 
 def get_hours():
-    """Returns {project_id: {classification: avg_hours_per_week}}.
-    
-    The API gives per-week entries; the optimizer thinks per-week
-    (40-hour cap is weekly), so we average across the weeks of data.
-    """
+    """Returns {project_id: {classification: total_hours}} summed across all weeks."""
     data = _try_api("/project/ProjectHours")
     if data is None:
         sample = _load_sample()["hours"]
         return {int(pid): h for pid, h in sample.items()}
 
-    # Group every weekly entry by (project, classification)
-    grouped = defaultdict(lambda: defaultdict(list))
+    hours = defaultdict(lambda: defaultdict(int))
     for entry in data:
         pid = entry["project"]["id"]
         cls = entry["classification"]["classification"]
-        grouped[pid][cls].append(entry["numberHours"])
+        hours[pid][cls] += entry["numberHours"]
+    return {pid: dict(cls_hours) for pid, cls_hours in hours.items()}
 
-    # Average across weeks and round to whole hours
-    return {
-        pid: {cls: round(sum(vals) / len(vals)) for cls, vals in cls_hours.items()}
-        for pid, cls_hours in grouped.items()
-    }
+
+def get_staff_project_rates():
+    """Returns {(staff_id, project_id): billing_rate} from the StaffRates endpoint.
+    
+    These are per-staff-per-project billing rates -- what the firm charges
+    the client. Much higher than base_rate (which is what we PAY consultants).
+    Used by the optimizer to minimize what the client gets billed.
+    """
+    data = _try_api("/project/StaffRates")
+    if data is None:
+        return None  # caller will fall back to base_rate
+    return {(r["staffID"], r["projectID"]): r["rate"] for r in data}
 
 
 def get_project_hours_filtered(project_id, classification_id):
@@ -144,6 +147,35 @@ def get_projects():
         }
         for p in data
     ]
+
+def get_hours_by_week():
+    """Returns {week_num: {project_id: {classification: hours}}}.
+    Used for week-by-week optimization."""
+    data = _try_api("/project/ProjectHours")
+    if data is None:
+        # Sample data is treated as a single week
+        sample = _load_sample()["hours"]
+        return {1: {int(pid): h for pid, h in sample.items()}}
+
+    result = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    for entry in data:
+        wk = entry["weekNum"]
+        pid = entry["project"]["id"]
+        cls = entry["classification"]["classification"]
+        if entry["numberHours"] > 0:
+            result[wk][pid][cls] += entry["numberHours"]
+    return {
+        wk: {pid: dict(cls_h) for pid, cls_h in projs.items()}
+        for wk, projs in result.items()
+    }
+
+def get_num_weeks():
+    """Returns the number of distinct weeks in the project hours data."""
+    data = _try_api("/project/ProjectHours")
+    if data is None:
+        return 1  # sample data is single-week
+    weeks = {entry["weekNum"] for entry in data if "weekNum" in entry}
+    return max(len(weeks), 1)
 
 
 def get_project(project_id):
